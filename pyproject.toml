@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cc_copt"
+version = "0.1.0"
+description = "Batch codon optimization CLI using DnaChisel"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = [
+    "dnachisel",
+    "biopython",
+    "click",
+    "pyyaml",
+    "pandas",
+    "python_codon_tables",
+]
+
+[project.scripts]
+cc_copt = "cc_copt.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest"]

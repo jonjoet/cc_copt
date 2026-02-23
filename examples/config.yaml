@@ -1,0 +1,43 @@
+# Codon optimization config for Corynebacterium glutamicum (TaxID 196627)
+species: 196627
+
+# Input type: "protein", "dna", or "auto" (auto-detect)
+input_type: auto
+
+# Stop codon to append when reverse-translating protein input
+stop_codon: TAA
+
+# Max random iterations for constraint resolution
+max_random_iters: 50000
+
+constraints:
+  - type: AvoidPattern
+    pattern: BsaI_site
+  - type: AvoidPattern
+    pattern: PmeI_site
+  - type: AvoidPattern
+    pattern: SapI_site
+  - type: AvoidPattern
+    pattern: BbsI_site
+  - type: AvoidPattern
+    pattern: PaqCI_site
+  - type: EnforceGCContent
+    mini: 0.4
+    maxi: 0.65
+    window: 50
+  - type: EnforceGCContent
+    mini: 0.45
+    maxi: 0.6
+  - type: EnforceTranslation
+    start_codon: keep
+  - type: AvoidRareCodons
+    min_frequency: 0.1
+  - type: AvoidHairpins
+    stem_size: 16
+    hairpin_window: 200
+
+objectives:
+  - type: CodonOptimize
+    method: match_codon_usage
+  - type: UniquifyAllKmers
+    k: 8
