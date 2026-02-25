@@ -1,5 +1,6 @@
 """Click-based CLI entrypoint for cc_copt."""
 
+import os
 import sys
 from multiprocessing import Pool
 from pathlib import Path
@@ -29,6 +30,9 @@ _worker_config = None
 def _init_worker(config_path):
     """Initialise each pool worker with its own loaded config."""
     global _worker_config
+    # Suppress verbose stdout/stderr from DnaChisel in worker processes
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
     _worker_config = load_config(config_path)
 
 
