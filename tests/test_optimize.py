@@ -54,10 +54,17 @@ def test_optimize_short_protein():
     config = load_config(EXAMPLES_DIR / "config.yaml")
     result = optimize_sequence("test", "MSKGEELFTGVV", config)
     assert result.name == "test"
-    assert len(result.optimized_seq) > 0
+    assert len(result.optimized_dna_seq) > 0
     # Optimized DNA should be 3x protein length + stop codon
-    assert len(result.optimized_seq) == (12 * 3 + 3)
+    assert len(result.optimized_dna_seq) == (12 * 3 + 3)
     assert result.constraints_pass
+    # Check new structured fields
+    assert result.protein_seq == "MSKGEELFTGVV"
+    assert result.input_dna_seq is None  # input was protein
+    assert len(result.constraint_results) > 0
+    assert all("label" in cr and "passes" in cr for cr in result.constraint_results)
+    assert len(result.objective_results) > 0
+    assert all("label" in or_ and "score" in or_ for or_ in result.objective_results)
 
 
 def test_write_fasta_roundtrip():

@@ -2,6 +2,7 @@
 
 import re
 
+from Bio.Seq import Seq
 from dnachisel.biotools import reverse_translate
 
 
@@ -43,3 +44,15 @@ def protein_to_dna(protein_seq: str, stop_codon: str = "TAA") -> str:
     clean = protein_seq.rstrip("*")
     dna = reverse_translate(clean)
     return dna + stop_codon
+
+
+def translate_dna(dna_seq: str) -> str:
+    """Translate a DNA sequence to protein (without stop character).
+
+    Args:
+        dna_seq: DNA sequence string.
+
+    Returns:
+        Protein sequence string (trailing '*' stripped).
+    """
+    return str(Seq(dna_seq).translate()).rstrip("*")

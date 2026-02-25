@@ -55,29 +55,40 @@ def _optimize_one(args):
         return _Failure(name, str(e))
 
 
-# Column order for the optional TSV summary.
-_TSV_COLUMNS = (
-    "id",
-    "original_seq",
-    "optimized_seq",
-    "constraints_pass",
-    "constraints_summary",
-    "objectives_summary",
-)
+# Fixed column names for the TSV output (dynamic columns are appended).
+_TSV_FIXED_COLUMNS = ("id", "protein_seq", "input_dna_seq", "optimized_dna_seq", "all_constraints_pass")
+
+
+def _build_tsv_headers(config):
+    """Build full TSV header list from config constraints/objectives.
+
+    Mirrors the constraint list built inside optimize_sequence() so that
+    the header columns match the per-row data exactly.
+    """
+    from dnachisel import EnforceTranslation
+
+    constraints = list(config.constraints)
+    if not any(isinstance(c, EnforceTranslation) for c in constraints):
+        constraints.append(EnforceTranslation(start_codon="keep"))
+
+    constraint_cols = [f"constraint:{c}" for c in constraints]
+    objective_cols = [f"objective:{o}" for o in config.objectives]
+    return list(_TSV_FIXED_COLUMNS) + constraint_cols + objective_cols
 
 
 def _write_result(r, fasta_fh, tsv_fh):
     """Write a single OptimizationResult to the open FASTA / TSV handles."""
-    write_fasta_record(fasta_fh, r.name, r.optimized_seq)
+    write_fasta_record(fasta_fh, r.name, r.optimized_dna_seq)
     if tsv_fh is not None:
-        vals = (
+        vals = [
             r.name,
-            r.original_seq,
-            r.optimized_seq,
+            r.protein_seq,
+            r.input_dna_seq or "",
+            r.optimized_dna_seq,
             r.constraints_pass,
-            r.constraints_summary,
-            r.objectives_summary,
-        )
+        ]
+        vals.extend("PASS" if cr["passes"] else "FAIL" for cr in r.constraint_results)
+        vals.extend(cr["score"] for cr in r.objective_results)
         tsv_fh.write("\t".join(str(v) for v in vals) + "\n")
         tsv_fh.flush()
 
@@ -150,7 +161,8 @@ def optimize(input_path, config_path, output_path, table_path, threads):
     try:
         if table_path:
             tsv_fh = open(table_path, "w")
-            tsv_fh.write("\t".join(_TSV_COLUMNS) + "\n")
+            headers = _build_tsv_headers(config)
+            tsv_fh.write("\t".join(headers) + "\n")
             tsv_fh.flush()
 
         if threads > 1:
