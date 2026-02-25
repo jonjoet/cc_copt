@@ -32,10 +32,23 @@ def _init_worker(config_path):
     _worker_config = load_config(config_path)
 
 
+class _Failure:
+    """Sentinel returned by a worker when optimisation fails for one sequence."""
+
+    __slots__ = ("name", "error")
+
+    def __init__(self, name, error):
+        self.name = name
+        self.error = error
+
+
 def _optimize_one(args):
     """Worker function for multiprocessing. Unpacks (name, seq) tuple."""
     name, seq = args
-    return optimize_sequence(name, seq, _worker_config)
+    try:
+        return optimize_sequence(name, seq, _worker_config)
+    except Exception as e:
+        return _Failure(name, str(e))
 
 
 # Column order for the optional TSV summary.
@@ -127,6 +140,8 @@ def optimize(input_path, config_path, output_path, table_path, threads):
     # as each sequence completes, rather than buffered in memory.
     fasta_fh = open(output_path, "w") if output_path else sys.stdout
     tsv_fh = None
+    succeeded = 0
+    failed = 0
 
     try:
         if table_path:
@@ -141,11 +156,27 @@ def optimize(input_path, config_path, output_path, table_path, threads):
                 threads, initializer=_init_worker, initargs=(config_path,)
             ) as pool:
                 for i, r in enumerate(pool.imap(_optimize_one, sequences), 1):
-                    _write_result(r, fasta_fh, tsv_fh)
-                    click.echo(f"  [{i}/{n}] {r.name}", err=True)
+                    if isinstance(r, _Failure):
+                        failed += 1
+                        click.echo(
+                            f"  [{i}/{n}] {r.name} FAILED: {r.error}",
+                            err=True,
+                        )
+                    else:
+                        succeeded += 1
+                        _write_result(r, fasta_fh, tsv_fh)
+                        click.echo(f"  [{i}/{n}] {r.name}", err=True)
         else:
             for i, (name, seq) in enumerate(sequences, 1):
-                r = optimize_sequence(name, seq, config)
+                try:
+                    r = optimize_sequence(name, seq, config)
+                except Exception as e:
+                    failed += 1
+                    click.echo(
+                        f"  [{i}/{n}] {name} FAILED: {e}", err=True
+                    )
+                    continue
+                succeeded += 1
                 _write_result(r, fasta_fh, tsv_fh)
                 click.echo(f"  [{i}/{n}] {r.name}", err=True)
     finally:
@@ -154,4 +185,6 @@ def optimize(input_path, config_path, output_path, table_path, threads):
         if tsv_fh:
             tsv_fh.close()
 
-    click.echo("Done.", err=True)
+    click.echo(f"Done. {succeeded} succeeded, {failed} failed.", err=True)
+    if failed:
+        sys.exit(1)
