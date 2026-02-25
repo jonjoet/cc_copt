@@ -92,6 +92,19 @@ def write_fasta(records: list[tuple[str, str]], output: str | Path | None):
         SeqIO.write(seq_records, str(output), "fasta")
 
 
+def write_fasta_record(fh: TextIO, name: str, seq: str):
+    """Write a single FASTA record to a file handle and flush.
+
+    Args:
+        fh: Writable text stream.
+        name: Sequence identifier.
+        seq: Sequence string.
+    """
+    record = SeqRecord(Seq(seq), id=name, description="")
+    SeqIO.write([record], fh, "fasta")
+    fh.flush()
+
+
 def write_tsv(rows: list[dict], output: str | Path):
     """Write summary TSV.
 
