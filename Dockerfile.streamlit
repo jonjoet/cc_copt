@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+LABEL maintainer="cc_copt" \
+      description="Codon optimization web interface"
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY cc_copt/ cc_copt/
+
+RUN pip install --no-cache-dir ".[streamlit]"
+
+COPY examples/ examples/
+
+EXPOSE 8501
+
+ENTRYPOINT ["python", "-m", "streamlit", "run", "cc_copt/gui.py", \
+    "--server.port=8501", \
+    "--server.address=0.0.0.0", \
+    "--browser.gatherUsageStats=false"]

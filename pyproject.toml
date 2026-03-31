@@ -21,5 +21,9 @@ dependencies = [
 [project.scripts]
 cc_copt = "cc_copt.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["cc_copt*"]
+
 [project.optional-dependencies]
 dev = ["pytest"]
+streamlit = ["streamlit>=1.28"]
