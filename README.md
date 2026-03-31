@@ -1,6 +1,6 @@
 # cc_copt
 
-Batch codon optimization CLI built on [DnaChisel](https://edinburgh-genome-foundry.github.io/DnaChisel/). Accepts protein or DNA sequences, applies configurable constraints and objectives via a YAML config, and outputs optimized DNA as FASTA and/or a summary TSV.
+Batch codon optimization built on [DnaChisel](https://edinburgh-genome-foundry.github.io/DnaChisel/). Accepts protein or DNA sequences, applies configurable constraints and objectives, and outputs optimized DNA as FASTA and/or a summary TSV. Available as a **CLI** for scripting/pipelines and as a **Streamlit web GUI** for interactive use.
 
 ## Installation
 
@@ -10,10 +10,16 @@ Batch codon optimization CLI built on [DnaChisel](https://edinburgh-genome-found
 pip install -e .
 ```
 
-### Docker
+### Docker (CLI)
 
 ```bash
 docker build -t cc_copt:latest .
+```
+
+### Docker (Streamlit GUI)
+
+```bash
+docker build -f Dockerfile.streamlit -t cc_copt-streamlit:latest .
 ```
 
 ## Quick Start
@@ -96,6 +102,39 @@ objectives:
 - Top-level `species` is automatically injected into specs that need it (`AvoidRareCodons`, `CodonOptimize`) unless overridden per-spec
 - `EnforceTranslation` is auto-added as a safety net if not listed
 
+## Web GUI (Streamlit)
+
+A Streamlit-based web interface is available for interactive use without the command line.
+
+### Running
+
+```bash
+# Local
+pip install ".[streamlit]"
+streamlit run cc_copt/gui.py
+
+# Docker
+docker build -f Dockerfile.streamlit -t cc_copt-streamlit:latest .
+docker run -p 8501:8501 cc_copt-streamlit:latest
+```
+
+Then open `http://localhost:8501` in your browser.
+
+### Features
+
+- **Upload sequences** — FASTA or CSV/TSV, same formats as the CLI
+- **Upload a YAML config** — same format as the CLI; pre-populates all settings in the GUI
+- **Configure manually** — set species, input type, stop codon, and iteration limit
+- **Add constraints and objectives** — pick from any supported DnaChisel specification type, with dynamically rendered parameter forms. Add as many as you need.
+- **View results** — per-sequence constraint pass/fail and objective scores
+- **Download** — optimized FASTA and summary TSV
+
+### Available Specifications
+
+**Constraints:** AvoidPattern, EnforceGCContent, EnforceTranslation, AvoidRareCodons, AvoidHairpins, AvoidStopCodons, EnforceSequence, AvoidChanges, EnforceTerminalGCContent, SequenceLengthBounds
+
+**Objectives:** CodonOptimize, MaximizeCAI, MatchTargetCodonUsage, UniquifyAllKmers, EnforceGCContent (with target), EnforceChanges, EnforcePatternOccurence
+
 ## Nextflow Integration
 
 An example DSL2 workflow is provided in `examples/nextflow/`. It uses the `cc_copt:latest` Docker image by default — build the image first, then run:
@@ -123,3 +162,4 @@ pytest tests/
 - [Click](https://click.palletsprojects.com/) — CLI framework
 - [PyYAML](https://pyyaml.org/) — config parsing
 - [pandas](https://pandas.pydata.org/) — CSV/TSV I/O
+- [Streamlit](https://streamlit.io/) — web GUI (optional)
