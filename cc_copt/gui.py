@@ -197,30 +197,45 @@ def _render_spec_block(index: int, spec_dict: dict, key_prefix: str, type_option
                     param.label, value=existing or "", key=wkey, help=param.help,
                 )
             elif param.type == "int":
+                int_min = int(param.min_value) if param.min_value is not None else None
+                int_max = int(param.max_value) if param.max_value is not None else None
+                if existing is not None:
+                    int_val = int(existing)
+                elif int_min is not None:
+                    int_val = int_min
+                else:
+                    int_val = 0
                 form_values[param.name] = st.number_input(
                     param.label,
-                    value=int(existing) if existing is not None else 0,
+                    value=int_val,
                     step=1,
-                    min_value=int(param.min_value) if param.min_value is not None else None,
-                    max_value=int(param.max_value) if param.max_value is not None else None,
+                    min_value=int_min,
+                    max_value=int_max,
                     key=wkey,
                     help=param.help,
                 )
-                # If the param is optional and user left at 0 / default-ish, check
-                if not param.required and existing is None and form_values[param.name] == 0:
+                if not param.required and existing is None and form_values[param.name] == int_val:
                     form_values[param.name] = None
             elif param.type == "float":
+                float_min = float(param.min_value) if param.min_value is not None else None
+                float_max = float(param.max_value) if param.max_value is not None else None
+                if existing is not None:
+                    float_val = float(existing)
+                elif float_min is not None:
+                    float_val = float_min
+                else:
+                    float_val = 0.0
                 form_values[param.name] = st.number_input(
                     param.label,
-                    value=float(existing) if existing is not None else 0.0,
+                    value=float_val,
                     step=0.01,
-                    min_value=float(param.min_value) if param.min_value is not None else None,
-                    max_value=float(param.max_value) if param.max_value is not None else None,
+                    min_value=float_min,
+                    max_value=float_max,
                     format="%.4f",
                     key=wkey,
                     help=param.help,
                 )
-                if not param.required and existing is None and form_values[param.name] == 0.0:
+                if not param.required and existing is None and form_values[param.name] == float_val:
                     form_values[param.name] = None
             elif param.type == "bool":
                 form_values[param.name] = st.checkbox(
