@@ -193,14 +193,6 @@ SPEC_REGISTRY: dict[str, SpecDef] = {
         help="Maximize Codon Adaptation Index for a target organism.",
         params=[],
     ),
-    "MatchTargetCodonUsage": SpecDef(
-        type_name="MatchTargetCodonUsage",
-        label="Match Target Codon Usage",
-        category="objective",
-        species_aware=True,
-        help="Match the codon usage profile of the target organism.",
-        params=[],
-    ),
     "UniquifyAllKmers": SpecDef(
         type_name="UniquifyAllKmers",
         label="Uniquify All K-mers",

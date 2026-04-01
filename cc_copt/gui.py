@@ -190,8 +190,21 @@ def _render_spec_block(index: int, spec_dict: dict, key_prefix: str, type_option
         col = param_cols[pi % len(param_cols)]
         existing = spec_dict.get(param.name, param.default)
         wkey = f"{key_prefix}_{index}_{param.name}"
+        is_optional = not param.required and param.default is None
 
         with col:
+            # For optional numeric params, show a checkbox to enable/disable
+            if is_optional and param.type in ("int", "float"):
+                enabled = st.checkbox(
+                    f"Set {param.label}",
+                    value=existing is not None,
+                    key=f"{wkey}_toggle",
+                    help=param.help,
+                )
+                if not enabled:
+                    form_values[param.name] = None
+                    continue
+
             if param.type == "str":
                 form_values[param.name] = st.text_input(
                     param.label, value=existing or "", key=wkey, help=param.help,
@@ -214,8 +227,6 @@ def _render_spec_block(index: int, spec_dict: dict, key_prefix: str, type_option
                     key=wkey,
                     help=param.help,
                 )
-                if not param.required and existing is None and form_values[param.name] == int_val:
-                    form_values[param.name] = None
             elif param.type == "float":
                 float_min = float(param.min_value) if param.min_value is not None else None
                 float_max = float(param.max_value) if param.max_value is not None else None
@@ -235,8 +246,6 @@ def _render_spec_block(index: int, spec_dict: dict, key_prefix: str, type_option
                     key=wkey,
                     help=param.help,
                 )
-                if not param.required and existing is None and form_values[param.name] == float_val:
-                    form_values[param.name] = None
             elif param.type == "bool":
                 form_values[param.name] = st.checkbox(
                     param.label,
