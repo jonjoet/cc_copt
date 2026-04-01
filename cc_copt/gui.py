@@ -7,10 +7,10 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
-from .config import OptConfig, build_spec, resolve_species
-from .io import read_input
-from .optimize import OptimizationResult, optimize_sequence
-from .spec_registry import (
+from cc_copt.config import OptConfig, build_spec, resolve_species
+from cc_copt.io import read_input
+from cc_copt.optimize import OptimizationResult, optimize_sequence
+from cc_copt.spec_registry import (
     SPEC_REGISTRY,
     get_constraint_specs,
     get_objective_specs,
