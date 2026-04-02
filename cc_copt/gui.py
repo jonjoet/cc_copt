@@ -74,6 +74,35 @@ if config_file is not None:
             st.sidebar.error("Config file must be a YAML mapping.")
 
 st.sidebar.markdown("---")
+
+# Export current config as YAML
+st.sidebar.header("Export Configuration")
+
+
+def _build_config_yaml() -> str:
+    """Serialize current session state settings to a YAML string."""
+    cfg: dict = {
+        "species": st.session_state["species"],
+        "input_type": st.session_state["input_type"],
+        "stop_codon": st.session_state["stop_codon"],
+        "max_random_iters": st.session_state["max_random_iters"],
+    }
+    if st.session_state["constraints"]:
+        cfg["constraints"] = st.session_state["constraints"]
+    if st.session_state["objectives"]:
+        cfg["objectives"] = st.session_state["objectives"]
+    return yaml.dump(cfg, default_flow_style=False, sort_keys=False)
+
+
+st.sidebar.download_button(
+    "Download Config as YAML",
+    data=_build_config_yaml(),
+    file_name="cc_copt_config.yaml",
+    mime="text/yaml",
+    help="Export the current settings, constraints, and objectives as a YAML file.",
+)
+
+st.sidebar.markdown("---")
 st.sidebar.markdown(
     "Or configure settings manually below and add "
     "constraints / objectives in the main panel."
