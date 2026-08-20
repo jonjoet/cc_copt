@@ -23,3 +23,6 @@ cc_copt = "cc_copt.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["cc_copt"]
