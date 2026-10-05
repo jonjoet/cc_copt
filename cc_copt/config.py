@@ -25,7 +25,7 @@ class OptConfig:
 _SPECIES_AWARE = {"AvoidRareCodons", "CodonOptimize"}
 
 
-def _resolve_species(raw_species):
+def resolve_species(raw_species):
     """Resolve species value: int TaxID, string name, or JSON file path."""
     if raw_species is None:
         return None
@@ -43,7 +43,7 @@ def _resolve_species(raw_species):
     return raw_species
 
 
-def _build_spec(spec_dict: dict, species, module=dnachisel):
+def build_spec(spec_dict: dict, species, module=dnachisel):
     """Build a DnaChisel specification object from a config dict entry.
 
     Args:
@@ -87,16 +87,16 @@ def load_config(config_path: str | Path) -> OptConfig:
     if not isinstance(raw, dict):
         raise ValueError("Config file must be a YAML mapping")
 
-    species = _resolve_species(raw.get("species"))
+    species = resolve_species(raw.get("species"))
     input_type = raw.get("input_type", "auto")
     stop_codon = raw.get("stop_codon", "TAA")
     max_random_iters = raw.get("max_random_iters", 50000)
 
     constraints = [
-        _build_spec(c, species) for c in raw.get("constraints", [])
+        build_spec(c, species) for c in raw.get("constraints", [])
     ]
     objectives = [
-        _build_spec(o, species) for o in raw.get("objectives", [])
+        build_spec(o, species) for o in raw.get("objectives", [])
     ]
 
     return OptConfig(

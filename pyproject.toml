@@ -23,6 +23,7 @@ cc_copt = "cc_copt.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+streamlit = ["streamlit>=1.28"]
 
 [tool.setuptools]
 packages = ["cc_copt"]
