@@ -1,5 +1,5 @@
 """Real browser uploads/downloads and optimization; optional dependencies."""
-import json
+import csv
 from pathlib import Path
 import subprocess
 import time
@@ -155,6 +155,17 @@ def test_import_edit_reapply_cli_and_gui_optimization(browser_page, synthetic):
     gui_fasta = download(page, "Download Optimized FASTA", artifacts / "optimized.fna")
     gui_summary = download(page, "Download Summary TSV", artifacts / "summary.tsv")
     check_outputs(synthetic / "protein.faa", gui_fasta, gui_summary)
+    with gui_summary.open() as f:
+        first_row = next(csv.DictReader(f, delimiter="\t"))
+    # Match the visible first result to the values in its actual served TSV.
+    for column, value in first_row.items():
+        if column.startswith("constraint:"):
+            label = column.removeprefix("constraint:")
+            display_name = label.split("[", 1)[0].split("(", 1)[0]
+            pw.expect(page.get_by_text(f"✅ {display_name}", exact=False).first).to_be_visible()
+        elif column.startswith("objective:"):
+            label = column.removeprefix("objective:")
+            pw.expect(page.get_by_text(f"{label}: {float(value):.4f}", exact=True).first).to_be_visible()
 
 
 def test_missing_species_table_is_safe(browser_page, synthetic):
