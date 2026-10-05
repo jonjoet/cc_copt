@@ -1,155 +1,106 @@
-"""Tests for the Streamlit GUI using AppTest (headless, no browser required)."""
+"""Optional AppTest regression coverage of deployed widget/state behavior."""
+import json
 
-from pathlib import Path
-from unittest.mock import MagicMock
-
-import yaml
+import pytest
+pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest
 
-APP_PATH = str(Path(__file__).parent.parent / "cc_copt" / "gui.py")
+from conftest import APP_PATH
+from cc_copt.config import build_spec
+from cc_copt.gui_config import normalize_gui_config, export_gui_config
+import yaml
 
 
-def _boot_app(**session_state_overrides) -> AppTest:
-    """Boot the Streamlit app with optional session-state overrides."""
-    at = AppTest.from_file(APP_PATH, default_timeout=10)
-    for k, v in session_state_overrides.items():
-        at.session_state[k] = v
-    at.run()
-    assert not at.exception, [str(e) for e in at.exception]
-    return at
+def boot(raw=None):
+    app = AppTest.from_file(str(APP_PATH), default_timeout=15)
+    if raw is not None:
+        for key, value in normalize_gui_config(raw).items():
+            app.session_state[key] = value
+    app.run()
+    assert not app.exception
+    return app
 
 
-# ------------------------------------------------------------------
-# Basic rendering
-# ------------------------------------------------------------------
+def widget_key(app, name):
+    if name.startswith(("con_", "obj_")):
+        group, index, field = name.split("_", 2)
+        prefix = f"form_{app.session_state['form_generation']}_{group}_{app.session_state[group + '_generation']}_{index}"
+        if field not in ("type", "rm"):
+            spec = app.session_state["constraints" if group == "con" else "objectives"][int(index)]
+            prefix += "_" + spec["type"]
+        return prefix + "_" + field
+    return f"form_{app.session_state['form_generation']}_{name}"
 
 
-def test_app_boots_without_error():
-    """The app renders its initial state without exceptions."""
-    at = _boot_app()
-    assert at.title[0].value == "cc_copt — Codon Optimizer"
+def test_boot_defaults_and_export_edit():
+    app = boot()
+    assert app.title[0].value == "cc_copt — Codon Optimizer"
+    assert app.session_state["input_type"] == "auto"
+    assert app.session_state["max_random_iters"] == 50000
+    app.text_input(key=widget_key(app, "species_input")).set_value("12345").run()
+    assert yaml.safe_load(export_gui_config(app.session_state))["species"] == "12345"
+    assert app.sidebar.get("download_button")
 
 
-def test_default_session_state():
-    """Default session-state values are set on first run."""
-    at = _boot_app()
-    assert at.session_state["input_type"] == "auto"
-    assert at.session_state["stop_codon"] == "TAA"
-    assert at.session_state["max_random_iters"] == 50000
-    assert at.session_state["constraints"] == []
-    assert at.session_state["objectives"] == []
+@pytest.mark.parametrize("button,group", [("add_constraint", "constraints"), ("add_objective", "objectives")])
+def test_add(button, group):
+    app = boot()
+    app.button(key=button).click().run()
+    assert len(app.session_state[group]) == 1
+    assert not app.exception
 
 
-# ------------------------------------------------------------------
-# YAML export
-# ------------------------------------------------------------------
+def test_remove_first_then_edit_remaining():
+    app = boot({"constraints": [dict(type="AvoidPattern", pattern="BsaI_site"),
+                                dict(type="AvoidPattern", pattern="EcoRI_site")]})
+    app.button(key=widget_key(app, "con_0_rm")).click().run()
+    assert len(app.session_state["constraints"]) == 1
+    assert app.text_input(key=widget_key(app, "con_0_pattern")).value == "EcoRI_site"
+    app.text_input(key=widget_key(app, "con_0_pattern")).set_value("BsmBI_site").run()
+    assert app.session_state["constraints"][0]["pattern"] == "BsmBI_site"
 
 
-def test_yaml_export_button_exists():
-    """The sidebar has a YAML download button."""
-    at = _boot_app()
-    sidebar_downloads = at.sidebar.get("download_button")
-    labels = [btn.label for btn in sidebar_downloads]
-    assert "Download Config as YAML" in labels
+def test_type_switch_resets_shared_fields_only():
+    app = boot({"constraints": [dict(type="EnforceGCContent", mini=0.4),
+                                dict(type="AvoidPattern", pattern="EcoRI_site")]})
+    app.selectbox(key=widget_key(app, "con_0_type")).set_value("EnforceTerminalGCContent").run()
+    assert app.number_input(key=widget_key(app, "con_0_mini")).value == 0.0
+    assert app.text_input(key=widget_key(app, "con_1_pattern")).value == "EcoRI_site"
+    app.selectbox(key=widget_key(app, "con_0_type")).set_value("AvoidPattern").run()
+    assert app.session_state["constraints"][0] == {"type": "AvoidPattern"}
+    assert not app.exception
 
 
-def test_build_config_yaml_default():
-    """_build_config_yaml produces valid YAML with default state."""
-    # Import the helper after setting up a mock session state
-    import streamlit as st
-
-    st.session_state["species"] = ""
-    st.session_state["input_type"] = "auto"
-    st.session_state["stop_codon"] = "TAA"
-    st.session_state["max_random_iters"] = 50000
-    st.session_state["constraints"] = []
-    st.session_state["objectives"] = []
-
-    from cc_copt.gui import _build_config_yaml
-
-    result = yaml.safe_load(_build_config_yaml())
-    assert result["input_type"] == "auto"
-    assert result["stop_codon"] == "TAA"
-    assert result["max_random_iters"] == 50000
-    assert "constraints" not in result
-    assert "objectives" not in result
+@pytest.mark.parametrize("field,minimum,positive", [("window", 1, 50), ("target", 0.0, 0.45)])
+def test_optional_numeric_transitions(field, minimum, positive):
+    app = boot({"constraints": [dict(type="EnforceGCContent")]})
+    toggle = f"con_0_{field}_toggle"
+    key = f"con_0_{field}"
+    assert field not in app.session_state["constraints"][0]
+    app.checkbox(key=widget_key(app, toggle)).check().run()
+    assert app.number_input(key=widget_key(app, key)).value == minimum
+    assert app.session_state["constraints"][0][field] == minimum
+    app.number_input(key=widget_key(app, key)).set_value(positive).run()
+    value = app.session_state["constraints"][0][field]
+    assert value == positive and isinstance(value, int if field == "window" else float)
+    app.checkbox(key=widget_key(app, toggle)).uncheck().run()
+    assert field not in app.session_state["constraints"][0]
+    assert not app.exception
 
 
-def test_build_config_yaml_with_specs():
-    """_build_config_yaml includes constraints and objectives when set."""
-    import streamlit as st
-
-    constraints = [
-        {"type": "AvoidPattern", "pattern": "BsaI_site"},
-        {"type": "EnforceGCContent", "mini": 0.4, "maxi": 0.65, "window": 50},
-    ]
-    objectives = [
-        {"type": "CodonOptimize", "method": "match_codon_usage"},
-        {"type": "UniquifyAllKmers", "k": 8},
-    ]
-    st.session_state["species"] = "196627"
-    st.session_state["input_type"] = "protein"
-    st.session_state["stop_codon"] = "TGA"
-    st.session_state["max_random_iters"] = 10000
-    st.session_state["constraints"] = constraints
-    st.session_state["objectives"] = objectives
-
-    from cc_copt.gui import _build_config_yaml
-
-    result = yaml.safe_load(_build_config_yaml())
-    assert result["species"] == "196627"
-    assert result["input_type"] == "protein"
-    assert result["stop_codon"] == "TGA"
-    assert result["max_random_iters"] == 10000
-    assert result["constraints"] == constraints
-    assert result["objectives"] == objectives
+def test_imported_omitted_defaults_display_and_build(synthetic):
+    app = boot(dict(constraints=[dict(type="EnforceTranslation")], objectives=[dict(type="CodonOptimize")]))
+    assert app.text_input(key=widget_key(app, "con_0_start_codon")).value == ""
+    assert app.text_input(key=widget_key(app, "con_0_genetic_table")).value == "default"
+    assert app.selectbox(key=widget_key(app, "obj_0_method")).value == "use_best_codon"
+    table = json.loads((synthetic / "synthetic-codons.json").read_text())
+    exported = yaml.safe_load(export_gui_config(app.session_state))
+    assert build_spec(exported["constraints"][0], table).start_codon is None
+    assert type(build_spec(exported["objectives"][0], table)).__name__ == "MaximizeCAI"
 
 
-def test_build_config_yaml_roundtrip_with_example():
-    """Exported YAML can be loaded back and matches the original config."""
-    import streamlit as st
-
-    example_path = Path(__file__).parent.parent / "examples" / "config.yaml"
-    with open(example_path) as f:
-        original = yaml.safe_load(f)
-
-    st.session_state["species"] = str(original["species"])
-    st.session_state["input_type"] = original["input_type"]
-    st.session_state["stop_codon"] = original["stop_codon"]
-    st.session_state["max_random_iters"] = original["max_random_iters"]
-    st.session_state["constraints"] = original["constraints"]
-    st.session_state["objectives"] = original["objectives"]
-
-    from cc_copt.gui import _build_config_yaml
-
-    exported = yaml.safe_load(_build_config_yaml())
-    # Species is stringified by the GUI text_input, so compare as strings
-    assert str(exported["species"]) == str(original["species"])
-    assert exported["input_type"] == original["input_type"]
-    assert exported["stop_codon"] == original["stop_codon"]
-    assert exported["max_random_iters"] == original["max_random_iters"]
-    assert exported["constraints"] == original["constraints"]
-    assert exported["objectives"] == original["objectives"]
-
-
-# ------------------------------------------------------------------
-# Add constraint / objective buttons
-# ------------------------------------------------------------------
-
-
-def test_add_constraint_button():
-    """Clicking 'Add Constraint' adds an entry to session state."""
-    at = _boot_app()
-    assert len(at.session_state["constraints"]) == 0
-    at.button(key="add_constraint").click().run()
-    assert not at.exception, [str(e) for e in at.exception]
-    assert len(at.session_state["constraints"]) == 1
-
-
-def test_add_objective_button():
-    """Clicking 'Add Objective' adds an entry to session state."""
-    at = _boot_app()
-    assert len(at.session_state["objectives"]) == 0
-    at.button(key="add_objective").click().run()
-    assert not at.exception, [str(e) for e in at.exception]
-    assert len(at.session_state["objectives"]) == 1
+def test_no_input_error():
+    app = boot()
+    app.button(key="run_optimize").click().run()
+    assert any("upload a sequence" in e.value for e in app.error)
+    assert not app.exception

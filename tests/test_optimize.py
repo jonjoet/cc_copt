@@ -1,79 +1,50 @@
-"""Basic tests for cc_copt optimization pipeline."""
+"""Focused offline engine/I/O checks using the one documented generator."""
+import random
 
-import tempfile
-from pathlib import Path
-
+from Bio.Seq import Seq
+import numpy as np
 import pytest
-
-from cc_copt.config import load_config
+from cc_copt.config import load_config, build_spec
 from cc_copt.io import read_input, write_fasta
 from cc_copt.optimize import optimize_sequence
 from cc_copt.utils import detect_sequence_type, protein_to_dna
 
-EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
+
+def test_sequence_detection(synthetic):
+    assert detect_sequence_type(read_input(synthetic / "protein.faa")[0][1]) == "protein"
+    assert detect_sequence_type(read_input(synthetic / "dna.fna")[0][1]) == "dna"
 
 
-def test_detect_protein():
-    assert detect_sequence_type("MSKGEELFTGVV") == "protein"
+@pytest.mark.parametrize("trailing_stop", [False, True])
+def test_reverse_translation(synthetic, trailing_stop):
+    protein = read_input(synthetic / "protein.faa")[0][1]
+    dna = protein_to_dna(protein + ("*" if trailing_stop else ""))
+    assert len(dna) == 3 * (len(protein) + 1)
+    assert str(Seq(dna).translate()) == protein + "*"
 
 
-def test_detect_dna():
-    assert detect_sequence_type("ATGCGATCGATCG") == "dna"
+@pytest.mark.parametrize("filename", ["protein.faa", "protein.csv", "protein.tsv"])
+def test_input_formats(synthetic, filename):
+    assert read_input(synthetic / filename) == read_input(synthetic / "protein.faa")
 
 
-def test_protein_to_dna_length():
-    protein = "MSKGEEL"
-    dna = protein_to_dna(protein, stop_codon="TAA")
-    # 7 amino acids * 3 + 3 (stop codon) = 24
-    assert len(dna) == 24
-    assert dna.endswith("TAA")
+def test_write_fasta(synthetic):
+    records = read_input(synthetic / "protein.faa")
+    output = synthetic / "roundtrip.faa"
+    write_fasta(records, output)
+    assert read_input(output) == records
 
 
-def test_protein_to_dna_strips_stop():
-    dna1 = protein_to_dna("MSKGEEL*", stop_codon="TAA")
-    dna2 = protein_to_dna("MSKGEEL", stop_codon="TAA")
-    assert len(dna1) == len(dna2)
-
-
-def test_load_config():
-    config = load_config(EXAMPLES_DIR / "config.yaml")
-    assert config.species == 196627
-    assert config.input_type == "auto"
-    assert len(config.constraints) > 0
-    assert len(config.objectives) > 0
-
-
-def test_read_fasta():
-    records = read_input(EXAMPLES_DIR / "example.faa")
-    assert len(records) == 3
-    assert records[0][0] == "GFP"
-
-
-def test_optimize_short_protein():
-    """Round-trip test: optimize a short protein sequence."""
-    config = load_config(EXAMPLES_DIR / "config.yaml")
-    result = optimize_sequence("test", "MSKGEELFTGVV", config)
-    assert result.name == "test"
-    assert len(result.optimized_dna_seq) > 0
-    # Optimized DNA should be 3x protein length + stop codon
-    assert len(result.optimized_dna_seq) == (12 * 3 + 3)
-    assert result.constraints_pass
-    # Check new structured fields
-    assert result.protein_seq == "MSKGEELFTGVV"
-    assert result.input_dna_seq is None  # input was protein
-    assert len(result.constraint_results) > 0
-    assert all("label" in cr and "passes" in cr for cr in result.constraint_results)
-    assert len(result.objective_results) > 0
-    assert all("label" in or_ and "score" in or_ for or_ in result.objective_results)
-
-
-def test_write_fasta_roundtrip():
-    """Write FASTA and read it back."""
-    records = [("seq1", "ATGCGATCG"), ("seq2", "ATGAAACCC")]
-    with tempfile.NamedTemporaryFile(suffix=".fna", mode="w", delete=False) as f:
-        path = f.name
-    write_fasta(records, path)
-    read_back = read_input(path)
-    assert len(read_back) == 2
-    assert read_back[0][1] == "ATGCGATCG"
-    Path(path).unlink()
+def test_real_optimization_and_restriction_site(synthetic):
+    random.seed(1729)
+    np.random.seed(1729)
+    cfg = load_config(synthetic / "config.yaml")
+    cfg.constraints.append(build_spec(dict(type="AvoidPattern", pattern="BsaI_site"), cfg.species))
+    name, protein = read_input(synthetic / "protein.faa")[0]
+    result = optimize_sequence(name, protein, cfg)
+    assert result.constraints_pass and all(c["passes"] for c in result.constraint_results)
+    assert str(Seq(result.optimized_dna_seq).translate()) == protein + "*"
+    assert len(result.optimized_dna_seq) == 3 * (len(protein) + 1)
+    from dnachisel import DnaOptimizationProblem, AvoidPattern
+    assert DnaOptimizationProblem(result.optimized_dna_seq, constraints=[AvoidPattern("BsaI_site")], logger=None).all_constraints_pass()
+    assert result.objective_results

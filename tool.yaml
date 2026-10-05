@@ -1,0 +1,49 @@
+schema_version: 1
+
+name: cc-copt
+description: Batch codon optimization using DnaChisel
+category: tool
+
+container:
+  image: cc_copt:latest
+
+command: cc_copt optimize --output /app/output/optimized.fasta --table /app/output/summary.tsv
+
+parameters:
+  - name: input
+    type: file
+    label: Input Sequences
+    extensions: [.fa, .faa, .fasta, .fna, .csv, .tsv]
+    cli_arg: input
+
+  - name: config_preset
+    type: select
+    label: Configuration Preset
+    cli_arg: config
+    resolve_paths: true
+    required: false
+    exclusive_group: config_source
+    options:
+      C. glutamicum: examples/config.yaml
+
+  - name: config_file
+    type: file
+    label: Custom Configuration
+    cli_arg: config
+    extensions: [.yaml, .yml]
+    required: false
+    exclusive_group: config_source
+
+  - name: threads
+    type: number
+    label: Parallel Workers
+    default: 1
+    required: false
+
+outputs:
+  optimized_fasta:
+    path: output/optimized.fasta
+    label: Optimized sequences (FASTA)
+  summary:
+    path: output/summary.tsv
+    label: Optimization summary (TSV)

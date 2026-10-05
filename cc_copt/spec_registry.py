@@ -82,9 +82,9 @@ SPEC_REGISTRY: dict[str, SpecDef] = {
         category="constraint",
         help="Preserve the amino-acid translation of the sequence.",
         params=[
-            ParamDef("genetic_table", "Genetic table", "str", default="Standard",
+            ParamDef("genetic_table", "Genetic table", "str", default="default",
                      help="Translation table name (e.g. Standard, Bacterial)."),
-            ParamDef("start_codon", "Start codon", "str", default="keep",
+            ParamDef("start_codon", "Start codon", "str", default=None,
                      help="'keep' preserves original, or specify e.g. ATG."),
         ],
     ),
@@ -180,18 +180,10 @@ SPEC_REGISTRY: dict[str, SpecDef] = {
         species_aware=True,
         help="Optimize codon usage for a target organism.",
         params=[
-            ParamDef("method", "Method", "select", default="match_codon_usage",
-                     options=["match_codon_usage", "use_best_codon", "harmonize_rca"],
+            ParamDef("method", "Method", "select", default="use_best_codon",
+                     options=["match_codon_usage", "use_best_codon"],
                      help="Optimization strategy."),
         ],
-    ),
-    "MaximizeCAI": SpecDef(
-        type_name="MaximizeCAI",
-        label="Maximize CAI",
-        category="objective",
-        species_aware=True,
-        help="Maximize Codon Adaptation Index for a target organism.",
-        params=[],
     ),
     "UniquifyAllKmers": SpecDef(
         type_name="UniquifyAllKmers",

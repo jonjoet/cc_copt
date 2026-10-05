@@ -5,9 +5,9 @@ from io import StringIO
 from pathlib import Path
 
 import streamlit as st
-import yaml
 
 from cc_copt.config import OptConfig, build_spec, resolve_species
+from cc_copt.gui_config import GuiConfigError, parse_gui_config, export_gui_config
 from cc_copt.io import read_input
 from cc_copt.optimize import OptimizationResult, optimize_sequence
 from cc_copt.spec_registry import (
@@ -38,6 +38,9 @@ def _init_state():
         "objectives": [],
         "results": None,
         "errors": None,
+        "form_generation": 0,
+        "con_generation": 0,
+        "obj_generation": 0,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -45,6 +48,10 @@ def _init_state():
 
 
 _init_state()
+
+
+def _widget_key(name):
+    return f"form_{st.session_state['form_generation']}_{name}"
 
 # ---------------------------------------------------------------------------
 # Sidebar — YAML config upload
@@ -54,53 +61,28 @@ st.sidebar.header("Load Configuration")
 config_file = st.sidebar.file_uploader(
     "Upload a YAML config file",
     type=["yaml", "yml"],
-    help="Same format as the CLI config. Populates all settings below.",
+    help="Loads settings supported by this GUI. Configurations using other DnaChisel types or parameters can be run with the CLI.",
 )
 
-if config_file is not None:
-    if st.sidebar.button("Apply Config"):
-        raw = yaml.safe_load(config_file.getvalue())
-        if isinstance(raw, dict):
-            st.session_state["species"] = str(raw.get("species", ""))
-            st.session_state["input_type"] = raw.get("input_type", "auto")
-            st.session_state["stop_codon"] = raw.get("stop_codon", "TAA")
-            st.session_state["max_random_iters"] = raw.get("max_random_iters", 50000)
-            st.session_state["constraints"] = raw.get("constraints", [])
-            st.session_state["objectives"] = raw.get("objectives", [])
-            st.session_state["results"] = None
-            st.session_state["errors"] = None
-            st.rerun()
-        else:
-            st.sidebar.error("Config file must be a YAML mapping.")
+if config_file is not None and st.sidebar.button("Apply Config"):
+    try:
+        config = parse_gui_config(config_file.getvalue())
+    except GuiConfigError as error:
+        st.sidebar.error(str(error))
+    else:
+        st.session_state["form_generation"] += 1
+        st.session_state["con_generation"] = 0
+        st.session_state["obj_generation"] = 0
+        st.session_state.update(config)
+        st.session_state["results"] = None
+        st.session_state["errors"] = None
+        st.rerun()
 
 st.sidebar.markdown("---")
 
-# Export current config as YAML
+# Keep the sidebar placement; fill it only after collecting every control.
 st.sidebar.header("Export Configuration")
-
-
-def _build_config_yaml() -> str:
-    """Serialize current session state settings to a YAML string."""
-    cfg: dict = {
-        "species": st.session_state["species"],
-        "input_type": st.session_state["input_type"],
-        "stop_codon": st.session_state["stop_codon"],
-        "max_random_iters": st.session_state["max_random_iters"],
-    }
-    if st.session_state["constraints"]:
-        cfg["constraints"] = st.session_state["constraints"]
-    if st.session_state["objectives"]:
-        cfg["objectives"] = st.session_state["objectives"]
-    return yaml.dump(cfg, default_flow_style=False, sort_keys=False)
-
-
-st.sidebar.download_button(
-    "Download Config as YAML",
-    data=_build_config_yaml(),
-    file_name="cc_copt_config.yaml",
-    mime="text/yaml",
-    help="Export the current settings, constraints, and objectives as a YAML file.",
-)
+export_slot = st.sidebar.empty()
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(
@@ -138,8 +120,8 @@ with col1:
     species_val = st.text_input(
         "Species",
         value=st.session_state["species"],
-        help="TaxID (integer) or species name (e.g. e_coli).",
-        key="species_input",
+        help="TaxID, species name, or a local .json codon-table path in the app environment.",
+        key=_widget_key("species_input"),
     )
 with col2:
     input_type_options = ["auto", "protein", "dna"]
@@ -147,7 +129,7 @@ with col2:
         "Input type",
         input_type_options,
         index=input_type_options.index(st.session_state["input_type"]),
-        key="input_type_input",
+        key=_widget_key("input_type_input"),
     )
 with col3:
     stop_codon_options = ["TAA", "TAG", "TGA"]
@@ -155,7 +137,7 @@ with col3:
         "Stop codon",
         stop_codon_options,
         index=stop_codon_options.index(st.session_state["stop_codon"]),
-        key="stop_codon_input",
+        key=_widget_key("stop_codon_input"),
     )
 with col4:
     max_iters_val = st.number_input(
@@ -163,7 +145,7 @@ with col4:
         value=st.session_state["max_random_iters"],
         min_value=100,
         step=1000,
-        key="max_iters_input",
+        key=_widget_key("max_iters_input"),
     )
 
 # Sync back to session state
@@ -182,10 +164,9 @@ _OBJECTIVE_TYPES = [s.type_name for s in get_objective_specs()]
 
 def _render_spec_block(index: int, spec_dict: dict, key_prefix: str, type_options: list[str]):
     """Render one constraint/objective block.  Returns updated dict or None if removed."""
+    key_prefix = _widget_key(f"{key_prefix}_{st.session_state[key_prefix + '_generation']}")
     cols = st.columns([4, 1])
     current_type = spec_dict.get("type", type_options[0])
-    if current_type not in type_options:
-        current_type = type_options[0]
 
     with cols[0]:
         new_type = st.selectbox(
@@ -218,7 +199,7 @@ def _render_spec_block(index: int, spec_dict: dict, key_prefix: str, type_option
     for pi, param in enumerate(spec_def.params):
         col = param_cols[pi % len(param_cols)]
         existing = spec_dict.get(param.name, param.default)
-        wkey = f"{key_prefix}_{index}_{param.name}"
+        wkey = f"{key_prefix}_{index}_{new_type}_{param.name}"
         is_optional = not param.required and param.default is None
 
         with col:
@@ -311,6 +292,7 @@ for i, spec in enumerate(st.session_state["constraints"]):
 
 if len(updated_constraints) != len(st.session_state["constraints"]):
     st.session_state["constraints"] = updated_constraints
+    st.session_state["con_generation"] += 1
     st.rerun()
 else:
     st.session_state["constraints"] = updated_constraints
@@ -334,9 +316,18 @@ for i, spec in enumerate(st.session_state["objectives"]):
 
 if len(updated_objectives) != len(st.session_state["objectives"]):
     st.session_state["objectives"] = updated_objectives
+    st.session_state["obj_generation"] += 1
     st.rerun()
 else:
     st.session_state["objectives"] = updated_objectives
+
+export_slot.download_button(
+    "Download Config as YAML",
+    data=export_gui_config(st.session_state),
+    file_name="cc_copt_config.yaml",
+    mime="text/yaml",
+    help="Download the current settings, constraints, and objectives for reuse in the GUI or CLI.",
+)
 
 # ---------------------------------------------------------------------------
 # Optimize
@@ -373,7 +364,11 @@ if st.button("Run Optimization", type="primary", key="run_optimize"):
         st.stop()
 
     # Build OptConfig
-    species = resolve_species(st.session_state["species"])
+    try:
+        species = resolve_species(st.session_state["species"])
+    except Exception:
+        st.error("Could not load the species or codon table. Check the species setting and local JSON-table file.")
+        st.stop()
 
     try:
         constraints = [

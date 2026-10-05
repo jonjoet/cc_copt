@@ -34,10 +34,15 @@ cc_copt optimize \
   -t summary.tsv
 ```
 
+The retained reporter example uses TaxID 196627. In the resolved
+`python_codon_tables` package this TaxID downloads its table, so the primary
+quickstart needs network access. It was retained without a runtime acceptance
+claim. For an executed offline example, see [examples/README.md](examples/README.md).
+
 ### Docker
 
 ```bash
-docker run --rm -v "$PWD":/data cc_copt:latest cc_copt optimize \
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/data cc_copt:latest cc_copt optimize \
   -i /data/examples/example.faa \
   -c /data/examples/config.yaml \
   -o /data/optimized.fna \
@@ -63,7 +68,7 @@ cc_copt optimize -i INPUT -c CONFIG [-o OUTPUT] [-t TABLE] [--threads N]
 - **FASTA** — protein (`.faa`) or DNA (`.fna`, `.fa`, `.fasta`)
 - **CSV/TSV** — auto-detects ID and sequence columns by header name (matches patterns like `id`, `name`, `accession` and `seq`, `sequence`, `protein`, `dna`)
 
-Protein sequences are automatically reverse-translated before optimization.
+Protein sequences are automatically reverse-translated before optimization. `stop_codon` sets the initial terminal codon; optimization can replace it with a synonymous stop while preserving translation.
 
 ## Configuration
 
@@ -111,29 +116,50 @@ A Streamlit-based web interface is available for interactive use without the com
 ```bash
 # Local
 pip install ".[streamlit]"
-streamlit run cc_copt/gui.py
+python -m streamlit run cc_copt/gui.py
 
 # Docker
 docker build -f Dockerfile.streamlit -t cc_copt-streamlit:latest .
-docker run -p 8501:8501 cc_copt-streamlit:latest
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -p 127.0.0.1:8501:8501 cc_copt-streamlit:latest
 ```
 
-Then open `http://localhost:8501` in your browser.
+Run the local command from this source checkout. Then open `http://localhost:8501` in your browser. The GUI is intended for trusted local use. For local JSON codon tables, mount the table directory into the GUI container and enter its container path in Species.
 
 ### Features
 
 - **Upload sequences** — FASTA or CSV/TSV, same formats as the CLI
-- **Upload a YAML config** — same format as the CLI; pre-populates all settings in the GUI
+- **Upload a YAML config** — loads supported GUI settings atomically; replaces earlier settings and clears results
 - **Configure manually** — set species, input type, stop codon, and iteration limit
-- **Add constraints and objectives** — pick from any supported DnaChisel specification type, with dynamically rendered parameter forms. Add as many as you need.
+- **Add constraints and objectives** — pick from the curated types listed below, with dynamically rendered parameter forms. Add as many as you need.
 - **View results** — per-sequence constraint pass/fail and objective scores
-- **Download** — optimized FASTA and summary TSV
+- **Download** — current configuration YAML, optimized FASTA and summary TSV
+
+### Configuration import and export
+
+The GUI accepts `species` (TaxID/name/local JSON-table path), `input_type`,
+`stop_codon`, integer `max_random_iters >= 100`, and lists of the curated types
+with their displayed parameters. Unsupported types, methods, extra fields,
+inline tables, per-spec species overrides and location arguments are rejected
+without changing existing settings. Run broader DnaChisel configurations with
+the CLI. Invalid YAML also leaves the existing settings intact.
+
+Omitted fields use effective library defaults; optional numeric controls omit
+unset arguments and retain enabled zero where allowed. Download Config as YAML
+exports the current settings after committed edits (Enter or blur), ready for
+GUI reimport or CLI use.
+
+Use `CodonOptimize` with `match_codon_usage` for `MatchTargetCodonUsage` behavior,
+or `use_best_codon` for the equivalent MaximizeCAI behavior. The redundant
+MaximizeCAI GUI type is omitted. `harmonize_rca` needs source-species information
+and is deferred in the GUI ([issue #5](https://github.com/jonjoet/cc_copt/issues/5));
+the CLI continues accepting its broader supported constructor kwargs.
 
 ### Available Specifications
 
 **Constraints:** AvoidPattern, EnforceGCContent, EnforceTranslation, AvoidRareCodons, AvoidHairpins, AvoidStopCodons, EnforceSequence, AvoidChanges, EnforceTerminalGCContent, SequenceLengthBounds
 
-**Objectives:** CodonOptimize, MaximizeCAI, MatchTargetCodonUsage, UniquifyAllKmers, EnforceGCContent (with target), EnforceChanges, EnforcePatternOccurence
+**Objectives:** CodonOptimize, UniquifyAllKmers, EnforceGCContent (with target), EnforceChanges, EnforcePatternOccurence
 
 ## Nextflow Integration
 
@@ -151,9 +177,22 @@ nextflow run examples/nextflow/main.nf \
 ## Running Tests
 
 ```bash
+# CLI/core and pure config tests; GUI modules intentionally skip without Streamlit.
 pip install -e ".[dev]"
-pytest tests/
+python -m pytest -p no:cacheprovider tests/test_optimize.py tests/test_cli.py tests/test_gui_config.py
+
+# Full GUI/AppTest/browser suite (Python 3.11 containers used for verification).
+pip install -e ".[dev,streamlit]"
+pip install playwright
+python -m playwright install --with-deps chromium
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider tests/
 ```
+
+Tests generate synthetic fixtures offline with `examples/generate_synthetic.py`.
+Browser tests run the real app and optimizer, upload/reapply settings and inspect
+actual downloads. AppTest and browser tests use `CC_COPT_APP_PATH` when set,
+defaulting to this checkout's `cc_copt/gui.py`. Verification dependencies belong
+in a disposable container or a project environment; they are not production deps.
 
 ## Dependencies
 
